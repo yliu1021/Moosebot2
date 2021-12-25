@@ -1,15 +1,7 @@
+require("./util");
 const { Client, Intents } = require('discord.js');
 const { discordToken } = require('./config.json');
 const botManager = require("./bot/manager");
-
-function getCurrentDateString() {
-    return (new Date()).toISOString() + ' ::';
-}
-__originalLog = console.log;
-console.log = function () {
-    const args = [].slice.call(arguments);
-    __originalLog.apply(console.log, [getCurrentDateString()].concat(args));
-};
 
 const client = new Client({
     intents: [
