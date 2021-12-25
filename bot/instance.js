@@ -47,15 +47,15 @@ class Instance {
     }
 
     receiveVoiceMessage(message, member) {
-        let botChannel;
+        let devChannel;
         for (const [channelId, channel] of this.guild.channels.cache) {
-            if (channel.name.includes("bot-channel")) {
-                botChannel = channel;
+            if (channel.name.includes("developer")) {
+                devChannel = channel;
             }
         }
-        if (!botChannel) { return; }
-        if (!(botChannel instanceof TextChannel)) { return; }
-        botChannel.send(`<@${member.id}>: ${message}`);
+        if (!devChannel) { return; }
+        if (!(devChannel instanceof TextChannel)) { return; }
+        devChannel.send(`<@${member.id}>: ${message}`);
     }
 
     receivePhrase(packets, member) {
@@ -70,6 +70,7 @@ class Instance {
         const data = convertAudio(buffer);
         voice.transcribe(data)
             .then(text => {
+                if (text.length === 0) { return; }
                 console.log(`${member.user.username}: ${text}`);
                 this.receiveVoiceMessage(text, member);
             })
