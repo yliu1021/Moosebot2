@@ -1,7 +1,9 @@
 require("./util");
 const { Client, Intents } = require('discord.js');
 const { discordToken } = require('./config.json');
-const botManager = require("./bot/manager");
+const { Instance } = require("./bot/instance");
+
+const botInstances = new Map()
 
 const client = new Client({
     intents: [
@@ -14,14 +16,27 @@ const client = new Client({
 
 client.once('ready', () => {
     console.log("Logged in as " + client.user.username);
+    client.guilds.cache.forEach((guild, guildId) => {
+        botInstances.set(guildId, new Instance(client, guild));
+    });
 });
 
 client.on("messageCreate", message => {
-    if (message.author === client.user) {
-        return;
+    console.log("messageCreate");
+    const guildId = message.guildId;
+    const instance = botInstances.get(guildId);
+    if (instance) {
+        instance.receiveTextMessage(message);
     }
-    console.log(`Received message "${message.content}" in channel "${message.channel.name}"`);
-    botManager.processMessage(message);
 });
+
+client.on("voiceStateUpdate", (oldState, newState) => {
+    console.log("voiceStateUpdate");
+    const guildId = newState.guild.id;
+    const instance = botInstances.get(guildId);
+    if (instance) {
+        instance.voiceStateUpdate(oldState, newState);
+    }
+})
 
 _ = client.login(discordToken);
