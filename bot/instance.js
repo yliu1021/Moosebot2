@@ -70,6 +70,7 @@ class Instance {
         const data = convertAudio(buffer);
         voice.transcribe(data)
             .then(text => {
+                if (!text) { return; }
                 if (text.length === 0) { return; }
                 console.log(`${member.user.username}: ${text}`);
                 this.receiveVoiceMessage(text, member);
@@ -84,7 +85,7 @@ class Instance {
         this.phrases[member.id].listener = setTimeout(async () => {
             this.receivePhrase(this.phrases[member.id].packets, member);
             this.phrases[member.id].packets = [];
-        }, 1_000);
+        }, 500);
     }
 
     voiceStateUpdate(oldState, newState) {
