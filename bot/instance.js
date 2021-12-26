@@ -1,9 +1,10 @@
-const { VoiceConnectionStatus, joinVoiceChannel, getVoiceConnection, EndBehaviorType, VoiceConnectionDisconnectedState,
-    VoiceConnectionDestroyedState
+const {
+    VoiceConnectionStatus, joinVoiceChannel, getVoiceConnection, EndBehaviorType, VoiceConnectionReadyState
 } = require("@discordjs/voice");
-const { OpusEncoder } = require("@discordjs/opus");
+const {OpusEncoder} = require("@discordjs/opus");
 const voice = require("./voice");
-const {TextChannel} = require("discord.js");
+const {Music} = require("./music");
+const wit = require("./wit");
 
 const encoder = new OpusEncoder(48_000, 2);
 
@@ -11,10 +12,10 @@ function convertAudio(input) {
     try {
         // stereo to mono channel
         const data = new Int16Array(input)
-        const new_data = new Int16Array(data.length/2)
-        for (let i = 0, j = 0; i < data.length; i+=4) {
+        const new_data = new Int16Array(data.length / 2)
+        for (let i = 0, j = 0; i < data.length; i += 4) {
             new_data[j++] = data[i]
-            new_data[j++] = data[i+1]
+            new_data[j++] = data[i + 1]
         }
         return Buffer.from(new_data);
     } catch (e) {
@@ -41,25 +42,28 @@ class Instance {
         });
         console.log(`Created bot instance for guild "${guild.name}"`);
         this.phrases = {};
+        this.music = new Music(() => {
+            return getVoiceConnection(this.guild.id);
+        });
     }
 
     receiveTextMessage(message) {
+        if (message.member.user.bot) { return; }
+        wit.client
+            .message(message.content)
+            .then(data => {
+                this.music.receiveCommand(data, message.member);
+            })
+            .catch(err => console.error);
     }
 
-    receiveVoiceMessage(message, member) {
-        let devChannel;
-        for (const [channelId, channel] of this.guild.channels.cache) {
-            if (channel.name.includes("developer")) {
-                devChannel = channel;
-            }
-        }
-        if (!devChannel) { return; }
-        if (!(devChannel instanceof TextChannel)) { return; }
-        devChannel.send(`<@${member.id}>: ${message}`);
+    receiveVoiceMessage(witResponse, member) {
+        this.music.receiveCommand(witResponse, member);
     }
 
     receivePhrase(packets, member) {
-        const buffer = Buffer.concat(packets);
+        packets = packets.map((packet) => (encoder.decode(packet)));
+        let buffer = Buffer.concat(packets);
         const duration = buffer.length / 48_000 / 4;
         console.log(`Phrase from ${member.user.username}: ${duration} sec`);
         if (duration <= 0.5) {
@@ -69,17 +73,20 @@ class Instance {
         }
         const data = convertAudio(buffer);
         voice.transcribe(data)
-            .then(text => {
-                if (!text) { return; }
-                if (text.length === 0) { return; }
-                console.log(`${member.user.username}: ${text}`);
-                this.receiveVoiceMessage(text, member);
+            .then(witResponse => {
+                if (!witResponse) {
+                    return;
+                }
+                if (witResponse.length === 0) {
+                    return;
+                }
+                console.log(`${member.user.username}: ${JSON.stringify(witResponse)}`);
+                this.receiveVoiceMessage(witResponse, member);
             })
             .catch(console.error);
     }
 
     receiveVoicePacket(data, member) {
-        data = encoder.decode(data);
         this.phrases[member.id].packets.push(data);
         clearTimeout(this.phrases[member.id].listener);
         this.phrases[member.id].listener = setTimeout(async () => {
@@ -92,28 +99,34 @@ class Instance {
         if (oldState.channelId === newState.channelId) {
             return;
         }
-        const connection = getVoiceConnection(this.guild.id);
-        if (!connection
-            || connection.state === VoiceConnectionDisconnectedState
-            || connection.state === VoiceConnectionDestroyedState) {
-            return;
-        }
         if (newState.id === this.client.user.id) {
             console.log(`Bot voice channel changed to ${newState.channel}`);
             // bot voice channel changed
             this.voiceChannel = newState.channel;
-            if (!this.voiceChannel) { return; }
+            if (!this.voiceChannel) {
+                return;
+            }
             this.voiceChannel.members.forEach(member => {
-                if (member.user.bot) { return; }
+                if (member.user.bot) {
+                    return;
+                }
                 this.listenToMember(member);
             });
-        } else {
-            // other user channel changes
-            if (newState.member.user.bot) { return; }
-            if (!this.voiceChannel) { return; }
-            if (this.voiceChannel === newState.channel) {
-                this.listenToMember(newState.member);
-            }
+            return;
+        }
+        const connection = getVoiceConnection(this.guild.id);
+        if (!connection || connection.state !== VoiceConnectionReadyState) {
+            return;
+        }
+        // other user channel changes
+        if (newState.member.user.bot) {
+            return;
+        }
+        if (!this.voiceChannel) {
+            return;
+        }
+        if (this.voiceChannel === newState.channel) {
+            this.listenToMember(newState.member);
         }
     }
 
@@ -127,8 +140,11 @@ class Instance {
             adapterCreator: this.guild.voiceAdapterCreator
         });
         connection.on(VoiceConnectionStatus.Ready, () => {
+            this.voiceChannel = voiceChannel;
             voiceChannel.members.forEach(member => {
-                if (member.user.bot) { return; }
+                if (member.user.bot) {
+                    return;
+                }
                 this.listenToMember(member);
             })
         });
@@ -139,7 +155,8 @@ class Instance {
         if (connection) {
             connection.receiver.subscriptions.forEach((stream, memberId) => {
                 stream.destroy();
-            })
+            });
+            this.phrases = {};
             connection.disconnect();
         }
     }
@@ -147,9 +164,13 @@ class Instance {
     listenToMember(member) {
         console.log(`Listening to ${member.user.username}`);
         const connection = getVoiceConnection(this.guild.id);
-        if (!connection) { return; }
+        if (!connection) {
+            return;
+        }
         const receiver = connection.receiver;
-        if (receiver.subscriptions.has(member.id)) { return; }
+        if (receiver.subscriptions.has(member.id)) {
+            return;
+        }
         this.phrases[member.id] = {
             packets: [],
             listener: null

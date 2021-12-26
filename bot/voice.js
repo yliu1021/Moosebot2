@@ -23,15 +23,15 @@ async function transcribe(buffer) {
                 } catch {}
             });
             res.on("end", () => {
-                resolve(data["text"]);
+                resolve(data);
             });
             res.on("error", err => {
                 reject(err);
-            })
+            });
         });
         req.write(buffer);
         req.end();
-    })
+    });
 }
 
 exports.transcribe = transcribe
