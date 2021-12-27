@@ -52,9 +52,10 @@ class Instance {
         wit.client
             .message(message.content)
             .then(data => {
+                console.log("got wit response: " + JSON.stringify(data));
                 this.music.receiveCommand(data, message.member);
             })
-            .catch(err => console.error);
+            .catch(console.error);
     }
 
     receiveVoiceMessage(witResponse, member) {
@@ -120,9 +121,11 @@ class Instance {
         }
         // other user channel changes
         if (newState.member.user.bot) {
+            console.log("other member is a bot")
             return;
         }
         if (!this.voiceChannel) {
+            console.log("bot isn't in a voice channel");
             return;
         }
         if (this.voiceChannel === newState.channel) {

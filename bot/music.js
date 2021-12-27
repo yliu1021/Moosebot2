@@ -1,6 +1,8 @@
 const ytdl = require("ytdl-core")
 const https = require("https");
-const {createAudioPlayer, createAudioResource} = require("@discordjs/voice");
+const childProcess = require("child_process");
+const pathToFFMpeg = require("ffmpeg-static");
+const {createAudioPlayer, createAudioResource, StreamType} = require("@discordjs/voice");
 
 class Music {
     constructor(getConnection) {
@@ -8,9 +10,9 @@ class Music {
     }
 
     receiveCommand(command, member) {
-        console.log(`Music received ${JSON.stringify(command)}`);
         if (member.bot) return;
         const intent = getBestIntent(command);
+        console.log("Music best intent: " + JSON.stringify(intent));
         if (!intent) return;
         if (intent["confidence"] < 0.6) return;
         if (intent["name"] === "play_song") {
@@ -56,7 +58,32 @@ class Music {
                 return format["url"]
             })
             .then(videoURL => {
-                const audioResource = createAudioResource(videoURL, {
+                const ffmpegProcess = childProcess.spawn(
+                    pathToFFMpeg,
+                    [
+                        "-reconnect", "1",
+                        "-reconnect_streamed", "1",
+                        "-reconnect_delay_max", "5",
+                        "-i", videoURL,
+                        "-map_metadata", "-1",
+                        "-f", "opus",
+                        "-c:a", "libopus",
+                        "-ar", "48000",
+                        "-ac", "2",
+                        "-b:a", "128k",
+                        "-loglevel", "warning",
+                        "-vn",
+                        "pipe:1",
+                    ]
+                );
+                ffmpegProcess.stderr.on("data", err => {
+                    console.log("ffmpeg error: " + err);
+                })
+                return ffmpegProcess.stdout
+            })
+            .then(stream => {
+                const audioResource = createAudioResource(stream, {
+                    inputType: StreamType.OggOpus,
                     metadata: {query: query}
                 });
                 this.audioPlayer = createAudioPlayer();
