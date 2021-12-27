@@ -80,8 +80,10 @@ class Instance {
         console.log(`Phrase from ${member.user.username}: ${duration} sec`);
         if (duration <= 0.5) {
             console.log("Phrase too short");
+            return;
         } else if (duration >= 20) {
             console.log("Phrase too long");
+            return;
         }
         const data = convertAudio(buffer);
         voice.transcribe(data)
@@ -105,7 +107,7 @@ class Instance {
         this.phrases[member.id].listener = setTimeout(() => {
             this.receivePhrase(this.phrases[member.id].packets, member);
             this.phrases[member.id].packets = [];
-        }, 500);
+        }, 200);
     }
 
     voiceStateUpdate(oldState, newState) {
