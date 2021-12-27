@@ -35,11 +35,6 @@ class Instance {
         if (!this.guild.available) {
             console.warn(`Guild ${this.guild.name} is not available`);
         }
-        this.guild.voiceStates.cache.forEach((voiceState, memberId) => {
-            if (memberId === "191383271500808192") {
-                this.joinVoiceChannel(voiceState.channel)
-            }
-        });
         console.log(`Created bot instance for guild "${guild.name}"`);
         this.phrases = {};
         this.music = new Music(() => {
@@ -49,6 +44,24 @@ class Instance {
 
     receiveTextMessage(message) {
         if (message.member.user.bot) { return; }
+        const channel = message.channel;
+        if (message.content === "!join") {
+            if (!message.member.voice.channel) {
+                channel.send({
+                    content: "You're not in a voice channel",
+                    reply: {
+                        messageReference: message,
+                        failIfNotExists: false,
+                    },
+                });
+            } else {
+                this.joinVoiceChannel(message.member.voice.channel);
+            }
+            return;
+        } else if (message.content === "!leave") {
+            this.leaveVoiceChannel();
+            return;
+        }
         wit.client
             .message(message.content)
             .then(data => {
@@ -165,19 +178,22 @@ class Instance {
     }
 
     listenToMember(member) {
-        console.log(`Listening to ${member.user.username}`);
+        console.log(`Listening to ${member.user.username}...`);
         const connection = getVoiceConnection(this.guild.id);
         if (!connection) {
+            console.log("Unable to listen: no voice connection");
             return;
         }
         const receiver = connection.receiver;
         if (receiver.subscriptions.has(member.id)) {
+            console.log("Already listening");
             return;
         }
         this.phrases[member.id] = {
             packets: [],
             listener: null
         }
+        console.log("Subscribing to voice stream");
         const stream = receiver.subscribe(
             member.id,
             {

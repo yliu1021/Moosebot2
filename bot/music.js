@@ -78,7 +78,7 @@ class Music {
                 );
                 ffmpegProcess.stderr.on("data", err => {
                     console.log("ffmpeg error: " + err);
-                })
+                });
                 return ffmpegProcess.stdout
             })
             .then(stream => {
