@@ -1,12 +1,10 @@
 const {
     VoiceConnectionStatus, joinVoiceChannel, getVoiceConnection, EndBehaviorType, VoiceConnectionReadyState
 } = require("@discordjs/voice");
-const {OpusEncoder} = require("@discordjs/opus");
+const prism = require("prism-media");
 const voice = require("./voice");
 const {Music} = require("./music");
 const wit = require("./wit");
-
-const encoder = new OpusEncoder(48_000, 2);
 
 function convertAudio(input) {
     try {
@@ -76,7 +74,7 @@ class Instance {
     }
 
     receivePhrase(packets, member) {
-        packets = packets.map((packet) => (encoder.decode(packet)));
+        // packets = packets.map((packet) => (encoder.decode(packet)));
         let buffer = Buffer.concat(packets);
         const duration = buffer.length / 48_000 / 4;
         console.log(`Phrase from ${member.user.username}: ${duration} sec`);
@@ -94,7 +92,8 @@ class Instance {
                 if (witResponse.length === 0) {
                     return;
                 }
-                console.log(`${member.user.username}: ${JSON.stringify(witResponse)}`);
+                console.log(`${member.user.username}: "${witResponse["text"]}"`);
+                console.log(JSON.stringify(witResponse));
                 this.receiveVoiceMessage(witResponse, member);
             })
             .catch(console.error);
@@ -103,7 +102,7 @@ class Instance {
     receiveVoicePacket(data, member) {
         this.phrases[member.id].packets.push(data);
         clearTimeout(this.phrases[member.id].listener);
-        this.phrases[member.id].listener = setTimeout(async () => {
+        this.phrases[member.id].listener = setTimeout(() => {
             this.receivePhrase(this.phrases[member.id].packets, member);
             this.phrases[member.id].packets = [];
         }, 500);
@@ -201,13 +200,21 @@ class Instance {
                 emitClose: true,
                 end: {
                     behavior: EndBehaviorType.Manual
-                }
+                },
+                objectMode: true,
             }
         );
-        stream.on("data", (data) => {
+        const decoder = new prism.opus.Decoder({
+            frameSize: 960,
+            channels: 2,
+            rate: 48_000,
+        });
+        decoder.setFEC(true);
+        stream.pipe(decoder);
+        decoder.on("data", (data) => {
             this.receiveVoicePacket(data, member);
         });
-        stream.on("error", (err) => {
+        decoder.on("error", (err) => {
             console.log(`Stream for ${member.user.username} errored: ` + err);
         });
     }
